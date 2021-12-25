@@ -2705,7 +2705,7 @@ static int cam_vfe_bus_update_ubwc_3_regs(
 	CAM_DBG(CAM_ISP, "WM %d meta stride 0x%x",
 		wm_data->index, reg_val_pair[*j-1]);
 
-	if (wm_data->common_data->disable_ubwc_comp) {
+    if (wm_data->common_data->disable_ubwc_comp) {
 		wm_data->ubwc_mode_cfg_0 &= ~ubwc_regs->ubwc_comp_en_bit;
 		CAM_DBG(CAM_ISP,
 			"Force disable UBWC compression on VFE:%d WM:%d",
@@ -2791,12 +2791,13 @@ static int cam_vfe_bus_update_ubwc_legacy_regs(
 	CAM_DBG(CAM_ISP, "WM %d meta stride 0x%x",
 		wm_data->index, reg_val_pair[*j-1]);
 
-	if (wm_data->common_data->disable_ubwc_comp) {
+    if (wm_data->common_data->disable_ubwc_comp) {
 		wm_data->ubwc_mode_cfg_0 &= ~ubwc_regs->ubwc_comp_en_bit;
 		CAM_DBG(CAM_ISP,
 			"Force disable UBWC compression on VFE:%d WM:%d",
 			wm_data->common_data->core_index, wm_data->index);
 	}
+
 	CAM_VFE_ADD_REG_VAL_PAIR(reg_val_pair, *j,
 		ubwc_regs->mode_cfg_0, wm_data->ubwc_mode_cfg_0);
 	CAM_DBG(CAM_ISP, "WM %d ubwc_mode_cfg_0 0x%x",

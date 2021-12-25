@@ -38,7 +38,7 @@ static int cam_a5_get_dt_properties(struct cam_hw_soc_info *soc_info)
 		CAM_ERR(CAM_ICP, "fw_name read failed");
 		goto end;
 	}
-
+	
 	a5_soc_info->fw_name = fw_name;
 
 	rc = of_property_read_u32(of_node, "qos-val",

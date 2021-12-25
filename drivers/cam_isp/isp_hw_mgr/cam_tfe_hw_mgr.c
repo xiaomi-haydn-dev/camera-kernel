@@ -5378,7 +5378,7 @@ static int cam_tfe_hw_mgr_handle_hw_sof(
 			break;
 
 		tfe_hw_irq_sof_cb(tfe_hw_mgr_ctx->common.cb_priv,
-			CAM_ISP_HW_EVENT_SOF, (void *)&sof_done_event_data);
+			CAM_ISP_HW_EVENT_SOF, &sof_done_event_data);
 
 		break;
 

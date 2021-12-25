@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/module.h>
+#if IS_ENABLED(CONFIG_ISPV2_AL6021)
+#include <linux/ispv2_ioparam.h>
+#endif
 #include <cam_sensor_cmn_header.h>
 #include "cam_sensor_core.h"
 #include "cam_sensor_util.h"
@@ -858,6 +862,20 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			goto release_mutex;
 		}
 
+#if IS_ENABLED(CONFIG_ISPV2_AL6021)
+		if (sensor_acq_dev.reserved == CAM_RESERVED_POWERUP_EX) {
+
+			CAM_INFO(CAM_SENSOR,
+					"CAM_ACQUIRE_DEV Success, reserved %x", sensor_acq_dev.reserved);
+
+			rc = cam_sensor_power_up_extra(s_ctrl);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "Sensor Power up Extra failed");
+				goto release_mutex;
+			}
+		}
+#endif
+
 		s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
 		s_ctrl->last_flush_req = 0;
 		CAM_INFO(CAM_SENSOR,
@@ -867,6 +885,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	}
 		break;
 	case CAM_RELEASE_DEV: {
+	    struct cam_req_mgr_timer_notify timer;
 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
 			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
 			rc = -EINVAL;
@@ -910,6 +929,21 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->bridge_intf.session_hdl = -1;
 
 		s_ctrl->sensor_state = CAM_SENSOR_INIT;
+
+		if (s_ctrl->bridge_intf.crm_cb &&
+			s_ctrl->bridge_intf.crm_cb->notify_timer) {
+			timer.link_hdl = s_ctrl->bridge_intf.link_hdl;
+			timer.dev_hdl = s_ctrl->bridge_intf.device_hdl;
+			timer.state = true;
+			rc = s_ctrl->bridge_intf.crm_cb->notify_timer(&timer);
+			if (rc) {
+				CAM_ERR(CAM_SENSOR,
+					"Enable CRM SOF freeze timer failed rc: %d",
+					rc);
+				return rc;
+			}
+		}
+
 		CAM_INFO(CAM_SENSOR,
 			"CAM_RELEASE_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
 			s_ctrl->sensordata->slave_info.sensor_id,
@@ -932,7 +966,6 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	}
 	case CAM_START_DEV: {
-		struct cam_req_mgr_timer_notify timer;
 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
 			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
 			rc = -EINVAL;
@@ -953,21 +986,6 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			}
 		}
 		s_ctrl->sensor_state = CAM_SENSOR_START;
-
-		if (s_ctrl->bridge_intf.crm_cb &&
-			s_ctrl->bridge_intf.crm_cb->notify_timer) {
-			timer.link_hdl = s_ctrl->bridge_intf.link_hdl;
-			timer.dev_hdl = s_ctrl->bridge_intf.device_hdl;
-			timer.state = true;
-			rc = s_ctrl->bridge_intf.crm_cb->notify_timer(&timer);
-			if (rc) {
-				CAM_ERR(CAM_SENSOR,
-					"Enable CRM SOF freeze timer failed rc: %d",
-					rc);
-				return rc;
-			}
-		}
-
 		CAM_INFO(CAM_SENSOR,
 			"CAM_START_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
 			s_ctrl->sensordata->slave_info.sensor_id,
@@ -1226,6 +1244,38 @@ cci_failure:
 	return rc;
 
 }
+
+#if IS_ENABLED(CONFIG_ISPV2_AL6021)
+int cam_sensor_power_up_extra(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	int rc;
+	struct cam_sensor_power_ctrl_t *power_info;
+	struct cam_camera_slave_info *slave_info;
+	struct cam_hw_soc_info *soc_info =
+		&s_ctrl->soc_info;
+
+	if (!s_ctrl) {
+		CAM_ERR(CAM_SENSOR, "failed: %pK", s_ctrl);
+		return -EINVAL;
+	}
+
+	power_info = &s_ctrl->sensordata->power_info;
+	slave_info = &(s_ctrl->sensordata->slave_info);
+
+	if (!power_info || !slave_info) {
+		CAM_ERR(CAM_SENSOR, "failed: %pK %pK", power_info, slave_info);
+		return -EINVAL;
+	}
+
+	rc = cam_sensor_core_power_up_extra(power_info, soc_info);
+	if (rc < 0) {
+		CAM_ERR(CAM_SENSOR, "power up extra the core is failed:%d", rc);
+		return rc;
+	}
+
+	return rc;
+}
+#endif
 
 int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
 {
