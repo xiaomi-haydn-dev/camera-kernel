@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -74,6 +74,7 @@ static const struct of_device_id msm_cam_hw_cdm_dt_match[] = {
 		.compatible = CAM_HW_CDM_OPE_NAME_2_1,
 		.data = &cam_cdm_2_1_reg_offset,
 	},
+	{},
 };
 
 static enum cam_cdm_id cam_hw_cdm_get_id_by_name(char *name)
@@ -417,6 +418,17 @@ void cam_hw_cdm_dump_core_debug_registers(struct cam_hw_info *cdm_hw,
 		dump_reg[0], dump_reg[1]);
 
 	cam_cdm_read_hw_reg(cdm_hw,
+		core->offsets->cmn_reg->wait_status, &dump_reg[0]);
+	cam_cdm_read_hw_reg(cdm_hw,
+		core->offsets->cmn_reg->comp_wait[0]->comp_wait_status,
+		&dump_reg[1]);
+	cam_cdm_read_hw_reg(cdm_hw,
+		core->offsets->cmn_reg->comp_wait[1]->comp_wait_status,
+		&dump_reg[2]);
+	CAM_INFO(CAM_CDM, "wait status 0x%x comp wait status 0x%x: 0x%x",
+		dump_reg[0], dump_reg[1], dump_reg[2]);
+
+	cam_cdm_read_hw_reg(cdm_hw,
 		core->offsets->cmn_reg->current_bl_len, &dump_reg[0]);
 	CAM_INFO(CAM_CDM,
 		"CDM HW current BL len=%d ARB %d FIFO %d tag=%d, ",
@@ -586,13 +598,9 @@ int cam_hw_cdm_wait_for_bl_fifo(
 				pending_bl);
 			break;
 		}
-		if (bl_count < (available_bl_slots - 1)) {
-			CAM_DBG(CAM_CDM,
-				"BL slot available_cnt=%d requested=%d",
-				(available_bl_slots - 1), bl_count);
-				rc = available_bl_slots - 1;
-				break;
-		} else if (0 == (available_bl_slots - 1)) {
+		if (0 == (available_bl_slots - 1)) {
+			reinit_completion(&core->bl_fifo[fifo_idx].bl_complete);
+
 			rc = cam_hw_cdm_enable_bl_done_irq(cdm_hw,
 				true, fifo_idx);
 			if (rc) {
@@ -619,7 +627,10 @@ int cam_hw_cdm_wait_for_bl_fifo(
 			rc = 1;
 			CAM_DBG(CAM_CDM, "CDM HW is ready for data");
 		} else {
-			rc = (bl_count - (available_bl_slots - 1));
+			CAM_DBG(CAM_CDM,
+				"BL slot available_cnt=%d requested=%d",
+				(available_bl_slots - 1), bl_count);
+			rc = available_bl_slots - 1;
 			break;
 		}
 	} while (1);
@@ -1139,7 +1150,7 @@ static void cam_hw_cdm_reset_cleanup(
 		test_bit(CAM_CDM_FLUSH_HW_STATUS, &core->cdm_status))
 		flush_hw = true;
 
-	if (test_bit(CAM_CDM_ERROR_HW_STATUS, &core->cdm_status))
+	if (test_bit(CAM_CDM_RESET_ERR_STATUS, &core->cdm_status))
 		reset_err = true;
 
 	for (i = 0; i < core->offsets->reg_data->num_bl_fifo; i++) {
@@ -1354,11 +1365,31 @@ static void cam_hw_cdm_iommu_fault_handler(struct cam_smmu_pf_info *pf_info)
 {
 	struct cam_hw_info *cdm_hw = NULL;
 	struct cam_cdm *core = NULL;
+	struct cam_cdm_pid_mid_data *pid_mid_info = NULL;
 	int i;
 
 	if (pf_info->token) {
 		cdm_hw = (struct cam_hw_info *)pf_info->token;
 		core = (struct cam_cdm *)cdm_hw->core_info;
+		pid_mid_info = core->offsets->cmn_reg->cdm_pid_mid_info;
+		CAM_ERR_RATE_LIMIT(CAM_CDM, "Page fault iova addr %pK\n",
+			(void *)pf_info->iova);
+
+		if (pid_mid_info) {
+			/*
+			 * If its CDM or OPE CDM then only handle the pf for CDM
+			 * else return.
+			 */
+			if (((pf_info->pid == pid_mid_info->cdm_pid) &&
+				(pf_info->mid == pid_mid_info->cdm_mid)) ||
+				((pf_info->pid == pid_mid_info->ope_cdm_pid) &&
+				(pf_info->mid == pid_mid_info->ope_cdm_mid)))
+				goto handle_cdm_pf;
+			else
+				return;
+		}
+
+handle_cdm_pf:
 		set_bit(CAM_CDM_ERROR_HW_STATUS, &core->cdm_status);
 		mutex_lock(&cdm_hw->hw_mutex);
 		for (i = 0; i < core->offsets->reg_data->num_bl_fifo; i++)
@@ -1372,15 +1403,12 @@ static void cam_hw_cdm_iommu_fault_handler(struct cam_smmu_pf_info *pf_info)
 		for (i = 0; i < core->offsets->reg_data->num_bl_fifo; i++)
 			mutex_unlock(&core->bl_fifo[i].fifo_lock);
 		mutex_unlock(&cdm_hw->hw_mutex);
-		CAM_ERR_RATE_LIMIT(CAM_CDM, "Page fault iova addr %pK\n",
-			(void *)pf_info->iova);
 		cam_cdm_notify_clients(cdm_hw, CAM_CDM_CB_STATUS_PAGEFAULT,
 			(void *)pf_info->iova);
 		clear_bit(CAM_CDM_ERROR_HW_STATUS, &core->cdm_status);
 	} else {
 		CAM_ERR(CAM_CDM, "Invalid token");
 	}
-
 }
 
 irqreturn_t cam_hw_cdm_irq(int irq_num, void *data)
@@ -1472,6 +1500,8 @@ irqreturn_t cam_hw_cdm_irq(int irq_num, void *data)
 			if (payload[i]->irq_data ==
 				CAM_CDM_DBG_GEN_IRQ_USR_DATA)
 				CAM_INFO(CAM_CDM, "Debug gen_irq received");
+
+			atomic_inc(&cdm_core->bl_fifo[i].work_record);
 		}
 
 		CAM_DBG(CAM_CDM,
@@ -1498,7 +1528,6 @@ irqreturn_t cam_hw_cdm_irq(int irq_num, void *data)
 			return IRQ_HANDLED;
 		}
 
-		atomic_inc(&cdm_core->bl_fifo[i].work_record);
 		payload[i]->workq_scheduled_ts = ktime_get();
 
 		work_status = queue_work(
@@ -1830,14 +1859,17 @@ int cam_hw_cdm_hang_detect(
 	uint32_t            handle)
 {
 	struct cam_cdm *cdm_core = NULL;
+	struct cam_hw_soc_info *soc_info;
 	int i, rc = -1;
 
 	cdm_core = (struct cam_cdm *)cdm_hw->core_info;
+	soc_info = &cdm_hw->soc_info;
 
 	for (i = 0; i < cdm_core->offsets->reg_data->num_bl_fifo; i++)
 		if (atomic_read(&cdm_core->bl_fifo[i].work_record)) {
 			CAM_WARN(CAM_CDM,
-				"workqueue got delayed, work_record :%u",
+				"workqueue got delayed for %s%u, work_record :%u",
+				soc_info->label_name, soc_info->index,
 				atomic_read(&cdm_core->bl_fifo[i].work_record));
 			rc = 0;
 			break;
