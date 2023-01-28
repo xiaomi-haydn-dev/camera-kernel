@@ -1044,6 +1044,7 @@ int cam_ife_csid_cid_reserve(struct cam_ife_csid_hw *csid_hw,
 
 	csid_hw->csi2_reserve_cnt++;
 	CAM_DBG(CAM_ISP, "CSID:%d CID:%d acquired phy_sel %u",
+
 		csid_hw->hw_intf->hw_idx,
 		cid_reserv->node_res->res_id,
 		csid_hw->csi2_rx_cfg.phy_sel);
@@ -1347,7 +1348,7 @@ int cam_ife_csid_path_reserve(struct cam_ife_csid_hw *csid_hw,
 	default:
 		path_data->dt = reserve->in_port->dt[0];
 		path_data->vc = reserve->in_port->vc[0];
-		if (reserve->in_port->num_valid_vc_dt) {
+		if (reserve->in_port->num_valid_vc_dt > 1) {
 			path_data->dt1 = reserve->in_port->dt[1];
 			path_data->vc1 = reserve->in_port->vc[1];
 			path_data->is_valid_vc1_dt1 = 1;
@@ -2650,6 +2651,11 @@ static int cam_ife_csid_init_config_rdi_path(
 			csid_reg->rdi_reg[id]->csid_rdi_multi_vcdt_cfg0_addr);
 		val |= ((path_data->vc1 << 2) |
 			(path_data->dt1 << 7) | 1);
+
+		cam_io_w_mb(val, soc_info->reg_map[0].mem_base +
+			csid_reg->rdi_reg[id]->csid_rdi_multi_vcdt_cfg0_addr);
+		CAM_DBG(CAM_ISP, "multi vcdt enabled: vc1 %d, dt1 %d, val %d",
+		path_data->vc1, path_data->dt1, val);
 	}
 
 	/* select the post irq sub sample strobe for time stamp capture */
@@ -3761,6 +3767,7 @@ int cam_ife_csid_release(void *hw_priv,
 			 csid_hw->hw_intf->hw_idx,
 			res->res_id, cid_data->cnt, csid_hw->csi2_reserve_cnt,
 			res->res_state);
+
 
 		break;
 	case CAM_ISP_RESOURCE_PIX_PATH:
@@ -5155,6 +5162,7 @@ handle_fatal_error:
 	}
 
 	if (fatal_err_detected) {
+		cam_debug_hw_trigger(CAM_ISP);
 		cam_ife_csid_halt_csi2(csid_hw);
 		cam_csid_handle_hw_err_irq(csid_hw,
 			(event_type | CAM_ISP_HW_ERROR_CSID_FATAL), irq_status);
