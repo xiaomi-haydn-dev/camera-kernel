@@ -1394,9 +1394,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 					CAM_ERR(CAM_SENSOR,
 						"Failed to apply settings: %d",
 						rc);
-					//return rc;
-					/* xiaomi add to ignore the apply setting fail - begin */
-					usleep_range(1000, 1010);
+					msleep(20);
 					rc = cam_sensor_i2c_modes_util(
 						&(s_ctrl->io_master_info),
 						i2c_list);
@@ -1404,10 +1402,8 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 						CAM_ERR(CAM_SENSOR,
 							"Failed to reapply settings: %d, skip",
 							rc);
-						rc = 0;
-						break;
+						return rc;
 					}
-					/* xiaomi add to ignore the apply setting fail - end */
 				}
 			}
 			CAM_DBG(CAM_SENSOR, "applied req_id: %llu", req_id);

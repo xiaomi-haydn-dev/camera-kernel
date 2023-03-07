@@ -94,6 +94,11 @@ endif
 
 endif
 
+#add camera macro
+ifdef CONFIG_MACH_XIAOMI_ZIJIN
+    KBUILD_CPPFLAGS += -DZIJIN_CAM
+endif
+
 ifdef CONFIG_MACH_XIAOMI_HAYDN
     KBUILD_CPPFLAGS += -DHAYDN_CAM
 endif

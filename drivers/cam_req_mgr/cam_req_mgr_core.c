@@ -1577,15 +1577,15 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 }
 
 /**
-* __cam_req_mgr_check_peer_req_is_applied()
-*
-* @brief	 : Check whether peer req is applied
-* @link	 : pointer to link whose input queue and req tbl are
-*			   traversed through
-* @idx 	 : slot idx
-* @return	 : true means the req is applied, others not applied
-*
-*/
+ * __cam_req_mgr_check_peer_req_is_applied()
+ *
+ * @brief    : Check whether peer req is applied
+ * @link     : pointer to link whose input queue and req tbl are
+ *             traversed through
+ * @idx      : slot idx
+ * @return   : true means the req is applied, others not applied
+ *
+ */
 static bool __cam_req_mgr_check_peer_req_is_applied(
 	struct cam_req_mgr_core_link *link,
 	int32_t idx)
@@ -1621,17 +1621,16 @@ static bool __cam_req_mgr_check_peer_req_is_applied(
 			continue;
 		}
 
-		sync_slot_idx = __cam_req_mgr_find_slot_for_req(
-			sync_link->req.in_q, req_id);
-
 		in_q = sync_link->req.in_q;
-
 		if (!in_q) {
 			CAM_DBG(CAM_CRM, "Link hdl %x in_q is NULL",
 				sync_link->link_hdl);
 			applied &= true;
 			continue;
 		}
+
+		sync_slot_idx = __cam_req_mgr_find_slot_for_req(
+			sync_link->req.in_q, req_id);
 
 		if ((sync_slot_idx < 0) ||
 			(sync_slot_idx >= MAX_REQ_SLOTS)) {
@@ -1685,8 +1684,9 @@ static int __cam_req_mgr_check_multi_sync_link_ready(
 			}
 			if (link->max_delay == link->sync_link[i]->max_delay) {
 				rc = __cam_req_mgr_check_sync_req_is_ready(
-						link, link->sync_link[i],
-						slot, trigger);
+					link, link->sync_link[i],
+					slot, trigger);
+
 				if (rc < 0) {
 					CAM_DBG(CAM_CRM, "link %x not ready",
 						link->link_hdl);
@@ -1823,6 +1823,19 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 		return -EINVAL;
 	}
 
+	/*
+	 * In case if the wq is scheduled while destroying session
+	 * the session mutex is already taken and will cause a
+	 * dead lock. To avoid further processing check link state
+	 * and exit.
+	 */
+	spin_lock_bh(&link->link_state_spin_lock);
+	if (link->state == CAM_CRM_LINK_STATE_IDLE) {
+		spin_unlock_bh(&link->link_state_spin_lock);
+		return -EPERM;
+	}
+	spin_unlock_bh(&link->link_state_spin_lock);
+
 	mutex_lock(&session->lock);
 	/*
 	 * During session destroy/unlink the link state is updated and session
@@ -1924,9 +1937,16 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 						slot->req_id,
 						(trigger == CAM_TRIGGER_POINT_SOF) ? "SOF" : "EOF");
 
-				if (!rc)
-					rc = __cam_req_mgr_check_link_is_ready(link,
-						slot->idx, false);
+				if (!rc) {
+					rc = __cam_req_mgr_check_peer_req_is_applied(
+						link, in_q->last_applied_idx);
+
+					if (rc)
+						rc = __cam_req_mgr_check_link_is_ready(
+							link, slot->idx, false);
+					else
+						rc = -EINVAL;
+				}
 			}
 		}
 
@@ -2035,9 +2055,8 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 			slot->status = CRM_SLOT_STATUS_REQ_APPLIED;
 
 			CAM_DBG(CAM_CRM, "req %d idx %d is applied on link %x",
-				slot->req_id,
-				in_q->rd_idx,
-				link->link_hdl);
+				slot->req_id, in_q->rd_idx, link->link_hdl);
+
 			idx = in_q->rd_idx;
 			reset_step = link->max_delay;
 
