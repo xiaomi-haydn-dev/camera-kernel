@@ -141,6 +141,7 @@ struct cam_ois_opcode {
  * @ois_name              :    OIS name
  * @opcode                :    opcode
  * @is_ois_pre_init       :    indicates the pre initialize data is available
+ * @is_ois_post_init      :    indicates the post initialize data is available
  */
 struct cam_cmd_ois_info {
 	__u32                 slave_addr;
@@ -150,7 +151,10 @@ struct cam_cmd_ois_info {
 	__u8                  is_ois_calib;
 	char                  ois_name[MAX_OIS_NAME_SIZE];
 	struct cam_ois_opcode opcode;
-	uint8_t               is_ois_pre_init; //xiaomi add
+	//xiaomi add begin
+	uint8_t               is_ois_pre_init;
+	uint8_t               is_ois_post_init;
+	//xiaomi add end
 } __attribute__((packed));
 
 /**

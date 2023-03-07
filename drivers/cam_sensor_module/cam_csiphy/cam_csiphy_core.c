@@ -52,7 +52,11 @@ static struct g_csiphy_data g_phy_data[MAX_CSIPHY] = {{0, 0}};
 static int active_csiphy_hw_cnt;
 
 static int csiphy_override_cnt  = 6;
+#if defined(CONFIG_MACH_XIAOMI_STAR)
+static int csiphy_override[100] = {0x9B4,0xa,0xAB4,0xa,0xBB4,0xa};
+#else
 static int csiphy_override[100] = {0x9B4,0x8,0xAB4,0x8,0xBB4,0x8};
+#endif
 module_param_array(csiphy_override, int, &csiphy_override_cnt, 0644);
 
 #if defined(CONFIG_MACH_XIAOMI_VENUS)
@@ -935,7 +939,9 @@ int32_t cam_csiphy_config_dev(struct csiphy_device *csiphy_dev,
 		}
 
 		//csiphy_3phase only
-		if (get_hw_version_platform() == HARDWARE_PROJECT_K2 ||
+		if (get_hw_version_platform() == HARDWARE_PROJECT_J18 ||
+			get_hw_version_platform() == HARDWARE_PROJECT_K2 ||
+			get_hw_version_platform() == HARDWARE_PROJECT_K8 ||
 			get_hw_version_platform() == HARDWARE_PROJECT_K11) {
 			if ((csiphy_dev->csiphy_info[index].data_rate/1000000) > csiphy_hack_rate_mb)
 			{

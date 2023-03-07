@@ -964,7 +964,9 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 		} else if (flash_data->opcode == CAM_PKT_NOP_OPCODE) {
 			CAM_DBG(CAM_FLASH, "NOP Packet");
 		} else {
-			rc = -EINVAL;
+			/* xiaomi add to ignore the invalid opcode - begin */
+			//rc = -EINVAL;
+			/* xiaomi add to ignore the invalid opcode - end */
 			CAM_ERR(CAM_FLASH, "Invalid opcode: %d req_id: %llu",
 				flash_data->opcode, req_id);
 			goto apply_setting_err;

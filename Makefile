@@ -94,6 +94,10 @@ endif
 
 endif
 
+ifdef CONFIG_MACH_XIAOMI_HAYDN
+    KBUILD_CPPFLAGS += -DHAYDN_CAM
+endif
+
 ifneq (,$(filter $(CONFIG_SPECTRA_CAMERA), y m))
 # Use USERINCLUDE when you must reference the UAPI directories only.
 USERINCLUDE     += \
